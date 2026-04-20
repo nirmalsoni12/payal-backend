@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# ✅ CORS (important)
+# ✅ CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,12 +12,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ TEST route
+# ✅ Home route
 @app.get("/")
 def home():
     return {"status": "AI Search Running"}
 
-# ✅ SEARCH route (MOST IMPORTANT)
+# ✅ SEARCH route (IMPORTANT)
 @app.post("/search")
 async def search(file: UploadFile):
     return {"result": "done"}
