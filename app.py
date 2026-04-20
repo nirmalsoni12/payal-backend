@@ -1,9 +1,9 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 app = FastAPI()
 
+# ✅ CORS (important)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,20 +12,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "data"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
+# ✅ TEST route
 @app.get("/")
 def home():
     return {"status": "AI Search Running"}
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(path, "wb") as f:
-        f.write(await file.read())
-    return {"msg": "uploaded"}
-
-@app.get("/search")
-def search():
-    return {"result": "Coming soon AI search"}
+# ✅ SEARCH route (MOST IMPORTANT)
+@app.post("/search")
+async def search(file: UploadFile):
+    return {"result": "done"}
