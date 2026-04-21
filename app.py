@@ -2,6 +2,8 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
+import torch
+from transformers import CLIPProcessor, CLIPModel
 
 app = FastAPI()
 
@@ -13,17 +15,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def home():
-    return {"message": "Backend running 🚀"}
+# Load AI model (1 time load)
+model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
 @app.post("/search")
 async def search(file: UploadFile = File(...)):
     contents = await file.read()
     image = Image.open(io.BytesIO(contents))
 
-    width, height = image.size
+    inputs = processor(images=image, return_tensors="pt")
+    outputs = model.get_image_features(**inputs)
 
     return {
-        "result": f"Image processed ✅ Size: {width}x{height}"
+        "result": "AI processed image 🔥",
+        "vector_size": len(outputs[0])
     }
