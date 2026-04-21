@@ -13,6 +13,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def home():
+    return {"message": "Backend running 🚀"}
+
 @app.post("/search")
 async def search(file: UploadFile = File(...)):
     contents = await file.read()
