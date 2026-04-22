@@ -1,9 +1,7 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
-import io
-import torch
-from transformers import CLIPProcessor, CLIPModel
+import requests
+import os
 
 app = FastAPI()
 
@@ -15,19 +13,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load AI model (1 time load)
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+HEADERS = {"Authorization": f"Bearer {os.getenv('HF_API_KEY')}"
+}
 
 @app.post("/search")
 async def search(file: UploadFile = File(...)):
     contents = await file.read()
-    image = Image.open(io.BytesIO(contents))
 
-    inputs = processor(images=image, return_tensors="pt")
-    outputs = model.get_image_features(**inputs)
+    response = requests.post(API_URL, headers=HEADERS, data=contents)
+
+    try:
+        result = response.json()[0]["generated_text"]
+    except:
+        result = "AI failed to understand image"
 
     return {
-        "result": "AI processed image 🔥",
-        "vector_size": len(outputs[0])
+        "result": result
     }
