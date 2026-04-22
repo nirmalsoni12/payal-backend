@@ -1,10 +1,9 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-import requests
-import os
 
 app = FastAPI()
 
+# CORS fix (VERY IMPORTANT)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,21 +12,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
-HEADERS = {"Authorization": f"Bearer {os.getenv('HF_API_KEY')}"
-}
+@app.get("/")
+def home():
+    return {"status": "AI Search Running"}
 
 @app.post("/search")
 async def search(file: UploadFile = File(...)):
     contents = await file.read()
 
-    response = requests.post(API_URL, headers=HEADERS, data=contents)
-
-    try:
-        result = response.json()[0]["generated_text"]
-    except:
-        result = "AI failed to understand image"
-
+    # TEST LOGIC (Phase 3)
     return {
-        "result": result
+        "filename": file.filename,
+        "size": len(contents),
+        "message": "File received successfully ✅"
     }
