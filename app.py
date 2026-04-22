@@ -1,5 +1,12 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+import requests
+import os
+
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+API_URL = "https://api-inference.huggingface.co/models/google/vit-base-patch16-224"
+headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 app = FastAPI()
 
@@ -20,9 +27,9 @@ def home():
 async def search(file: UploadFile = File(...)):
     contents = await file.read()
 
-    # TEST LOGIC (Phase 3)
+    response = requests.post(API_URL, headers=headers, data=contents)
+    result = response.json()
+
     return {
-        "filename": file.filename,
-        "size": len(contents),
-        "message": "File received successfully ✅"
+        "result": result
     }
