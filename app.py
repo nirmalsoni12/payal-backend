@@ -28,10 +28,11 @@ async def search(file: UploadFile = File(...)):
     response = requests.post(
         API_URL,
         headers={
-            "Authorization": f"Bearer {HF_TOKEN}",
-            "Content-Type": "application/octet-stream"
+            "Authorization": f"Bearer {HF_TOKEN}"
         },
-        data=contents
+        files={
+            "file": ("image.jpg", contents, "image/jpeg")
+        }
     )
 
     try:
