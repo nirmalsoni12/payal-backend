@@ -49,9 +49,9 @@ async function upload() {
       body: form,
     });
 
-    console.log("STATUS:", res.status);   // 👈 ADD THIS
-    let text = await res.text();          // 👈 ADD THIS
-    console.log("RESPONSE:", text);       // 👈 ADD THIS
+    console.log("STATUS:", res.status);
+    let text = await res.text();
+    console.log("RESPONSE:", text);
 
     let data = JSON.parse(text);
 
@@ -59,7 +59,7 @@ async function upload() {
       "Prediction: " + data.result[0].label;
 
   } catch (err) {
-    console.error("FETCH ERROR:", err);   // 👈 IMPORTANT
+    console.error("FETCH ERROR:", err);
     document.getElementById("result").innerText =
       "Error: " + err.message;
   }
