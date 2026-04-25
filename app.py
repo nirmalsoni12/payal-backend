@@ -36,3 +36,31 @@ async def search(file: UploadFile = File(...)):
 
     except Exception as e:
         return {"error": str(e)}
+
+async function upload() {
+  let file = document.getElementById("file").files[0];
+
+  let form = new FormData();
+  form.append("file", file);
+
+  try {
+    let res = await fetch(API + "/search", {
+      method: "POST",
+      body: form,
+    });
+
+    console.log("STATUS:", res.status);   // 👈 ADD THIS
+    let text = await res.text();          // 👈 ADD THIS
+    console.log("RESPONSE:", text);       // 👈 ADD THIS
+
+    let data = JSON.parse(text);
+
+    document.getElementById("result").innerText =
+      "Prediction: " + data.result[0].label;
+
+  } catch (err) {
+    console.error("FETCH ERROR:", err);   // 👈 IMPORTANT
+    document.getElementById("result").innerText =
+      "Error: " + err.message;
+  }
+}
