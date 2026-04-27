@@ -7,7 +7,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 app = FastAPI()
 
-# ---------------- CORS ----------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,7 +36,7 @@ def image_to_vector(path):
     arr = np.array(img).flatten()
     return arr / 255.0
 
-# ---------------- DUPLICATE CHECK ----------------
+# ---------------- DUPLICATE ----------------
 def is_duplicate(new_vec, items, threshold=0.95):
     for item in items:
         vec = np.array(item["vector"]).reshape(1,-1)
@@ -54,53 +53,44 @@ def generate_design_id(items):
     num = int(last.replace("DESIGN",""))
     return f"DESIGN{num+1:03d}"
 
-# ---------------- HOME ----------------
-@app.get("/")
-def home():
-    return {"status":"Phase 12 Running 🚀"}
-
-# ---------------- BULK ADD ----------------
+# ---------------- BULK ADD WITH BARCODE DATA ----------------
 @app.post("/add-bulk")
 async def add_bulk(
     file: UploadFile = File(...),
     name: str = Form(...),
     quantity: int = Form(...),
-    barcodes: str = Form(...)
+    barcodes: str = Form(...),
+    weights: str = Form(...)  # 🔥 JSON string
 ):
     items = load_items()
 
-    # save temp image
-    temp_path = "temp.jpg"
-    with open(temp_path, "wb") as f:
+    temp = "temp.jpg"
+    with open(temp,"wb") as f:
         f.write(await file.read())
 
-    vec = image_to_vector(temp_path)
-
-    # check duplicate design
-    existing, score = is_duplicate(vec, items)
+    vec = image_to_vector(temp)
+    existing, _ = is_duplicate(vec, items)
 
     barcode_list = barcodes.split(",")
+    weight_data = json.loads(weights)
 
-    # -------- EXISTING DESIGN --------
+    # EXISTING
     if existing:
         existing["quantity"] += len(barcode_list)
         existing["tag_series"].extend(barcode_list)
 
+        # add weight info
+        existing.setdefault("barcode_data", {}).update(weight_data)
+
         save_items(items)
 
-        return {
-            "msg": "Added to existing design",
-            "design_id": existing["design_id"],
-            "total_qty": existing["quantity"]
-        }
+        return {"msg":"Added to existing","design":existing["design_id"]}
 
-    # -------- NEW DESIGN --------
+    # NEW
     design_id = generate_design_id(items)
-
     sys_id = str(uuid.uuid4())[:8]
     path = f"{UPLOAD_DIR}/{sys_id}.jpg"
-
-    shutil.copy(temp_path, path)
+    shutil.copy(temp, path)
 
     new_item = {
         "id": sys_id,
@@ -109,69 +99,23 @@ async def add_bulk(
         "image": path,
         "quantity": len(barcode_list),
         "tag_series": barcode_list,
+        "barcode_data": weight_data,
         "vector": vec.tolist()
     }
 
     items.append(new_item)
     save_items(items)
 
-    return {
-        "msg": "New design added",
-        "design_id": design_id,
-        "qty": len(barcode_list)
-    }
+    return {"msg":"New design added","design":design_id}
 
-# ---------------- SEARCH ----------------
-@app.post("/search")
-async def search(file: UploadFile = File(...)):
-    items = load_items()
-
-    if not items:
-        return {"error":"No items"}
-
-    temp = "temp.jpg"
-    with open(temp,"wb") as f:
-        f.write(await file.read())
-
-    query_vec = image_to_vector(temp).reshape(1,-1)
-
-    best=None
-    best_score=-1
-
-    for item in items:
-        vec = np.array(item["vector"]).reshape(1,-1)
-        score = cosine_similarity(query_vec,vec)[0][0]
-
-        if score>best_score:
-            best_score=score
-            best=item
-
-    return {
-        "design": best["design_id"],
-        "name": best["name"],
-        "qty": best["quantity"],
-        "similarity": round(float(best_score),2)
-    }
-
-# ---------------- SELL ----------------
-@app.post("/sell-item")
-def sell_item(tag_no: str = Form(...)):
+# ---------------- BARCODE LOOKUP ----------------
+@app.get("/get-barcode-info")
+def get_barcode_info(code: str):
     items = load_items()
 
     for item in items:
-        if tag_no in item["tag_series"]:
+        if code in item.get("tag_series", []):
+            info = item.get("barcode_data", {}).get(code, {})
+            return {"found":True,"data":info}
 
-            if item["quantity"] <= 0:
-                return {"error":"Out of stock"}
-
-            item["quantity"] -= 1
-            item["tag_series"].remove(tag_no)
-
-            save_items(items)
-
-            return {
-                "msg":"Sold",
-                "remaining":item["quantity"]
-            }
-
-    return {"error":"Tag not found"}
+    return {"found":False}
