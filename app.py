@@ -1,207 +1,62 @@
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-import os, json, uuid, io
+from fastapi import FastAPI, UploadFile, File
+from pyzbar.pyzbar import decode
+import pytesseract
+import cv2
 import numpy as np
 from PIL import Image
-import cv2
-import pytesseract
-from pyzbar.pyzbar import decode
-from transformers import CLIPProcessor, CLIPModel
-from sklearn.metrics.pairwise import cosine_similarity
-import torch
+import io
+import re
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+db = []
 
-DB_FILE = "db.json"
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+def extract_text(img):
+    return pytesseract.image_to_string(img)
 
-# ---------------- LOAD MODEL ----------------
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+def parse_data(text):
+    name = "Unknown"
+    gw = ""
+    nw = ""
 
-# ---------------- DB ----------------
-def load_db():
-    try:
-        return json.load(open(DB_FILE))
-    except:
-        return []
+    lines = text.split("\n")
 
-def save_db(data):
-    json.dump(data, open(DB_FILE, "w"))
+    for line in lines:
+        if "G.W" in line:
+            gw = re.findall(r"\d+\.\d+", line)[0] if re.findall(r"\d+\.\d+", line) else ""
+        if "N.W" in line:
+            nw = re.findall(r"\d+\.\d+", line)[0] if re.findall(r"\d+\.\d+", line) else ""
+        if "KRISHNA" in line.upper():
+            name = "Krishna Payal"
 
-# ---------------- ID ----------------
-def generate_id(db):
-    return f"I{str(len(db)+1).zfill(2)}"
+    return name, gw, nw
 
-# ---------------- BARCODE ----------------
-def detect_barcode(image_bytes):
-    npimg = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+@app.post("/scan")
+async def scan(file: UploadFile = File(...)):
+    contents = await file.read()
+    img = Image.open(io.BytesIO(contents))
+
+    # barcode detect
     barcodes = decode(img)
-    if barcodes:
-        return barcodes[0].data.decode("utf-8")
-    return None
+    barcode_data = barcodes[0].data.decode("utf-8") if barcodes else "NONE"
 
-# ---------------- OCR ----------------
-def extract_text(image_bytes):
-    npimg = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    return pytesseract.image_to_string(gray)
+    # OCR
+    text = extract_text(img)
+    name, gw, nw = parse_data(text)
 
-def parse_details(text):
-    name, gross, net = "", "", ""
-
-    for line in text.split("\n"):
-        if "G.W" in line or "GW" in line:
-            gross = line.split(":")[-1].strip()
-        elif "N.W" in line or "NW" in line:
-            net = line.split(":")[-1].strip()
-        elif len(line.strip()) > 3 and not name:
-            name = line.strip()
-
-    return name, gross, net
-
-# ---------------- AI VECTOR ----------------
-def get_embedding(image_bytes):
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt")
-    with torch.no_grad():
-        emb = model.get_image_features(**inputs)
-    return emb[0].numpy().tolist()
-
-# ---------------- LOGIN ----------------
-@app.post("/login")
-def login(username: str = Form(...), password: str = Form(...)):
-    if username == "admin" and password == "1234":
-        return {"success": True}
-    return {"success": False}
-
-# ---------------- ADD ITEM ----------------
-@app.post("/add-item")
-async def add_item(
-    file: UploadFile = File(...),
-    barcode: str = Form(None)
-):
-    db = load_db()
-    content = await file.read()
-
-    # 🔥 auto barcode
-    if not barcode:
-        barcode = detect_barcode(content)
-
-    if not barcode:
-        return {"error": "Barcode not found"}
-
-    # ❌ duplicate tag
+    # duplicate check
     for item in db:
-        if barcode in item["tags"]:
-            return {"error": "Tag already exists"}
+        if item["barcode"] == barcode_data:
+            return {"error": "Already exists"}
 
-    # 🔍 OCR
-    text = extract_text(content)
-    name, gross, net = parse_details(text)
-
-    # 🧠 AI vector
-    vector = get_embedding(content)
-
-    # 📸 save image
-    filename = str(uuid.uuid4()) + ".jpg"
-    with open(f"{UPLOAD_DIR}/{filename}", "wb") as f:
-        f.write(content)
-
-    # 🔥 match existing
-    best_score = 0
-    best_item = None
-
-    for item in db:
-        score = cosine_similarity(
-            [vector], [item["vector"]]
-        )[0][0]
-
-        if score > best_score:
-            best_score = score
-            best_item = item
-
-    if best_score > 0.90:
-        best_item["tags"].append(barcode)
-        save_db(db)
-        return {"msg": "Added to existing", "id": best_item["id"]}
-
-    # 🆕 new item
-    new_item = {
-        "id": generate_id(db),
-        "tags": [barcode],
+    item = {
+        "id": f"I{len(db)+1:02}",
         "name": name,
-        "gross": gross,
-        "net": net,
-        "vector": vector,
-        "image": filename
+        "gross_weight": gw,
+        "net_weight": nw,
+        "barcode": barcode_data
     }
 
-    db.append(new_item)
-    save_db(db)
+    db.append(item)
 
-    return {"msg": "New item added", "id": new_item["id"]}
-
-# ---------------- SEARCH ----------------
-@app.post("/search")
-async def search(file: UploadFile = File(...)):
-    db = load_db()
-    content = await file.read()
-    query_vec = get_embedding(content)
-
-    best_score = 0
-    best_item = None
-
-    for item in db:
-        score = cosine_similarity(
-            [query_vec], [item["vector"]]
-        )[0][0]
-
-        if score > best_score:
-            best_score = score
-            best_item = item
-
-    if not best_item:
-        return {"error": "Not found"}
-
-    import random
-    tag = random.choice(best_item["tags"])
-
-    return {
-        "id": best_item["id"],
-        "tag": tag,
-        "name": best_item["name"],
-        "gross": best_item["gross"],
-        "net": best_item["net"],
-        "image": best_item["image"],
-        "score": float(best_score)
-    }
-
-# ---------------- SALE ----------------
-@app.post("/sale")
-def sale(tag: str = Form(...)):
-    db = load_db()
-
-    for item in db:
-        if tag in item["tags"]:
-            item["tags"].remove(tag)
-            save_db(db)
-            return {"msg": "Sold"}
-
-    return {"error": "Tag not found"}
-
-# ---------------- IMAGE ----------------
-@app.get("/image/{filename}")
-def image(filename: str):
-    return FileResponse(f"{UPLOAD_DIR}/{filename}")
+    return item

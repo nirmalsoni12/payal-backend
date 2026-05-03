@@ -1,11 +1,7 @@
 fastapi
 uvicorn
-python-multipart
-pillow
-opencv-python-headless
-numpy
-torch
-transformers
-scikit-learn
-pyzbar
 pytesseract
+opencv-python-headless
+python-multipart
+pyzbar
+pillow
